@@ -6,8 +6,8 @@ import java.io.IOException
 
 object CustomRuntime {
   val defaultEnvironment  = ZEnvironment.empty
-  val defaultRuntimeFlags = RuntimeFlags.default
   val defaultFiberRefs    = FiberRefs.empty
+  val defaultRuntimeFlags = RuntimeFlags.default
 
   final case class AppConfig(name: String)
 
@@ -38,7 +38,13 @@ object CustomRuntime {
    * or `Unsafe.unsafe { ... }` (Scala 3) in order to call `run`.
    */
   def main(args: Array[String]): Unit =
-    ???
+    Unsafe.unsafe(implicit unsafe =>
+      customRuntime.unsafe
+        .run(
+          program.provideEnvironment(ZEnvironment(AppConfig("Hello")))
+        )
+        .getOrThrow()
+    )
 }
 object ThreadPool extends ZIOAppDefault {
 
@@ -50,7 +56,8 @@ object ThreadPool extends ZIOAppDefault {
    * Using `ZIO#onExecutor`, write an `onDatabase` combinator that runs the
    * specified effect on the database thread pool.
    */
-  def onDatabase[R, E, A](zio: ZIO[R, E, A]): ZIO[R, E, A] = ???
+  def onDatabase[R, E, A](zio: ZIO[R, E, A]): ZIO[R, E, A] =
+    zio.onExecutor(dbPool)
 
   /**
    * EXERCISE
@@ -62,9 +69,9 @@ object ThreadPool extends ZIOAppDefault {
     val log = ZIO.succeed {
       val thread = Thread.currentThread()
 
-      val id        = ???
-      val name      = ???
-      val groupName = ???
+      val id        = thread.getId
+      val name      = thread.getName
+      val groupName = thread.getThreadGroup.getName
 
       println(s"Thread($id, $name, $groupName)")
     }

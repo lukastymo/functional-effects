@@ -30,7 +30,8 @@ object TypeIndeedMap extends ZIOAppDefault {
    * (`envLogging`, `envDatabase`, and `envCache`) into a single map that
    * has all three objects.
    */
-  val allThree: ZEnvironment[Database with Cache with Logging] = ???
+  val allThree: ZEnvironment[Database with Cache with Logging] =
+    envLogging ++ envDatabase ++ envCache
 
   /**
    * EXERCISE
@@ -41,11 +42,14 @@ object TypeIndeedMap extends ZIOAppDefault {
    * as it cannot be inferred (the map needs to know which of the objects
    * you want to retrieve, and that can be specified only by type).
    */
-  lazy val logging  = ???
-  lazy val database = ???
-  lazy val cache    = ???
+  lazy val logging  = allThree.get[Logging]
+  lazy val database = allThree.get[Database]
+  lazy val cache    = allThree.get[Cache]
 
-  val run = ???
+  val run = Console.printLine(allThree)
+
+//  val empty = ZEnvironment.empty
+//  empty.get[Nothing]
 }
 
 object AccessEnvironment extends ZIOAppDefault {
@@ -58,7 +62,8 @@ object AccessEnvironment extends ZIOAppDefault {
    * Using `ZIO.service`, access a `Config` service from the environment, and
    * extract the `host` field from it.
    */
-  val accessHost: ZIO[Config, Nothing, String] = ???
+  val accessHost: ZIO[Config, Nothing, String] =
+    ZIO.service[Config].map(_.host)
 
   /**
    * EXERCISE
@@ -66,7 +71,9 @@ object AccessEnvironment extends ZIOAppDefault {
    * Using `ZIO.service`, access a `Config` service from the environment, and
    * extract the `port` field from it.
    */
-  val accessPort: ZIO[Config, Nothing, Int] = ???
+  val accessPort: ZIO[Config, Nothing, Int] =
+    ZIO.serviceWith[Config](_.port)
+//    ZIO.service[Config].map(_.port)
 
   val run = {
     val config = Config("localhost", 7878)
@@ -105,7 +112,12 @@ object ProvideEnvironment extends ZIOAppDefault {
   val run = {
     val config = Config("localhost", 7878)
 
-    ???
+    val effect = (for {
+      server <- getServer.debug
+      status <- useDatabaseConnection.debug
+    } yield ()).provideEnvironment(ZEnvironment(config) ++ ZEnvironment(DatabaseConnection()))
+
+    effect
   }
 }
 
@@ -143,13 +155,23 @@ object LayerEnvironment extends ZIOAppDefault {
      * Using `ZLayer.succeed`, create a layer that implements the `Files`
      * service.
      */
-    val live: ZLayer[Any, Nothing, Files] = ???
+    val live: ZLayer[Any, Nothing, Files] =
+      ZLayer.succeed {
+        new Files {
+          def read(file: String): IO[IOException, String] = ZIO.succeed(s"hello $file")
+        }
+      }
   }
 
   trait Logging {
     def log(line: String): UIO[Unit]
   }
   object Logging {
+    case class LoggingImpl(console: Console) extends Logging {
+      def log(line: String): UIO[Unit] = console.printLine(s"INFO: $line").ignore
+
+      def destroy = console.printLine("Destroying").ignore
+    }
 
     /**
      * EXERCISE
@@ -157,7 +179,14 @@ object LayerEnvironment extends ZIOAppDefault {
      * Using `ZLayer.fromFunction`, create a layer that requires `Console`
      * and uses the console to provide a logging service.
      */
-    val live: ZLayer[Console, Nothing, Logging] = ???
+    val live: ZLayer[Console, Nothing, Logging] =
+      ZLayer.scoped {
+        for {
+          console <- ZIO.service[Console]
+          logging <- ZIO.succeed(LoggingImpl(console))
+          _       <- ZIO.addFinalizer(logging.destroy)
+        } yield logging
+      }
   }
 
   /**
@@ -165,7 +194,7 @@ object LayerEnvironment extends ZIOAppDefault {
    *
    * Discover the inferred type of `effect`, and write it out explicitly.
    */
-  val effect =
+  val effect2 =
     for {
       files   <- ZIO.service[Files]
       logging <- ZIO.service[Logging]
@@ -180,15 +209,24 @@ object LayerEnvironment extends ZIOAppDefault {
      *
      * Create a layer using `ZLayer.make` and specifying all the pieces that go into the layer.
      */
-    val fullLayer: ZLayer[Any, Nothing, Files with Logging] = ??? // ZLayer.make[Files with Logging](???)
+    val fullLayer: ZLayer[Any, Nothing, Files with Logging] =
+      ZLayer.make[Files with Logging](
+        Logging.live,
+        Files.live,
+        ZLayer.succeed(Console.ConsoleLive),
+        ZLayer.Debug.tree
+      )
 
     /**
      * EXERCISE
      *
      * Using `ZIO#provide`, provide the full layer into the effect to remove its dependencies.
      */
-    val effect: ZIO[Any, IOException, Unit] = ???
+    val effect: ZIO[Any, IOException, Unit] = {
+      effect2.provide(Logging.live, ZLayer.succeed(Console.ConsoleLive), Files.live)
+    }
 
     effect
+
   }
 }
