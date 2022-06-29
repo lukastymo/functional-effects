@@ -1,7 +1,10 @@
 package net.degoes.zio
 
 import zio._
+
 import java.io.IOException
+import java.time.temporal.ChronoUnit
+import scala.util.Try
 
 /*
  * INTRODUCTION
@@ -28,7 +31,7 @@ object ErrorConstructor extends ZIOAppDefault {
    * string value, such as "Uh oh!". Explain the type signature of the
    * effect.
    */
-  val failed: ZIO[Any, String, Nothing] = ???
+  val failed: ZIO[Any, String, Nothing] = ZIO.fail("Uh oh!")
 
   val run =
     failed.foldZIO(Console.printLine(_), Console.printLine(_))
@@ -45,7 +48,7 @@ object ErrorRecoveryOrElse extends ZIOAppDefault {
    * effect with another effect.
    */
   val run =
-    ???
+    failed.orElse(Console.printLine(42).orElse(ZIO.succeed(42)))
 }
 
 object ErrorShortCircuit extends ZIOAppDefault {
@@ -63,7 +66,7 @@ object ErrorShortCircuit extends ZIOAppDefault {
    * succeeds with an exit code.
    */
   val run =
-    ???
+    failed.orElse(ZIO.succeed(42)).exitCode
 }
 
 object ErrorRecoveryFold extends ZIOAppDefault {
@@ -77,7 +80,7 @@ object ErrorRecoveryFold extends ZIOAppDefault {
    * the unit value.
    */
   val run =
-    ???
+    failed.fold(err => (), _ => ())
 }
 
 object ErrorRecoveryCatchAll extends ZIOAppDefault {
@@ -91,7 +94,7 @@ object ErrorRecoveryCatchAll extends ZIOAppDefault {
    * the console using `Console.printLine`.
    */
   val run =
-    ???
+    failed.catchAll(err => Console.printLine(err))
 }
 
 object ErrorRecoveryFoldZIO extends ZIOAppDefault {
@@ -105,7 +108,7 @@ object ErrorRecoveryFoldZIO extends ZIOAppDefault {
    * by using `Console.printLine`.
    */
   val run =
-    ???
+    failed.foldZIO(err => Console.printLine(err), _ => Console.printLine("ok"))
 }
 
 object ErrorRecoveryEither extends ZIOAppDefault {
@@ -118,8 +121,8 @@ object ErrorRecoveryEither extends ZIOAppDefault {
    * Using `ZIO#either`, surface the error of `failed` into the success
    * channel, and then map the `Either[String, Int]` into an exit code.
    */
-  val run =
-    ???
+  val run = failed.either.exitCode
+
 }
 
 object ErrorRecoveryIgnore extends ZIOAppDefault {
@@ -132,7 +135,7 @@ object ErrorRecoveryIgnore extends ZIOAppDefault {
    * Using `ZIO#ignore`, simply ignore the failure of `failed`.
    */
   val run =
-    ???
+    failed.ignore
 }
 
 object ErrorRefinement1 extends ZIOAppDefault {
@@ -147,7 +150,8 @@ object ErrorRefinement1 extends ZIOAppDefault {
    * Using `ZIO#refineToOrDie`, narrow the error type of `broadReadLine` into
    * an `IOException`:
    */
-  val myReadLine: IO[IOException, String] = ???
+  val myReadLine: IO[IOException, String] =
+    broadReadLine.refineToOrDie[IOException]
 
   def myPrintLn(line: String): UIO[Unit] = ZIO.succeed(println(line))
 
@@ -173,7 +177,9 @@ object ErrorRefinement2 extends ZIOAppDefault {
    */
   lazy val getAlarmDuration: ZIO[Any, IOException, Duration] = {
     def parseDuration(input: String): IO[NumberFormatException, Duration] =
-      ???
+      ZIO
+        .attempt(zio.Duration.fromSeconds(input.toInt))
+        .refineToOrDie[NumberFormatException]
 
     def fallback(input: String): ZIO[Any, IOException, Duration] =
       Console.printLine(s"The input ${input} is not valid.") *> getAlarmDuration
@@ -193,7 +199,12 @@ object ErrorRefinement2 extends ZIOAppDefault {
    * prints out a wakeup alarm message, like "Time to wakeup!!!".
    */
   val run =
-    ???
+    for {
+      n    <- Console.readLine("give me a number")
+      secs <- ZIO.attempt(n.toInt)
+      _    <- ZIO.sleep(Duration(secs, ChronoUnit.SECONDS))
+      _    <- Console.printLine("Time to wakeup")
+    } yield ()
 }
 
 object ZIOFinally extends ZIOAppDefault {
@@ -205,7 +216,7 @@ object ZIOFinally extends ZIOAppDefault {
    * effect, which will be executed whether `tickingBomb` succeeds
    * or fails. Print out a message to the console saying "Executed".
    */
-  lazy val tickingBomb2 = tickingBomb
+  lazy val tickingBomb2 = tickingBomb.ensuring(Console.printLine("Executed").ignore)
 
   /**
    * EXERCISE
@@ -230,7 +241,7 @@ object SequentialCause extends ZIOAppDefault {
    * Using `Cause.++`, form a sequential cause by composing `failed1`
    * and `failed2`.
    */
-  lazy val composed = ???
+  lazy val composed = failed1 ++ failed2
 
   /**
    * EXERCISE
@@ -238,7 +249,7 @@ object SequentialCause extends ZIOAppDefault {
    * Using `Cause.prettyPrint`, dump out `composed` to the console.
    */
   val run =
-    ???
+    Console.printLine(composed.prettyPrint)
 }
 
 object ParalellCause extends ZIOAppDefault {
@@ -252,7 +263,7 @@ object ParalellCause extends ZIOAppDefault {
    * Using `Cause.&&`, form a parallel cause by composing `failed1`
    * and `failed2`.
    */
-  lazy val composed = ???
+  lazy val composed = failed1 && failed2
 
   /**
    * EXERCISE
@@ -260,7 +271,7 @@ object ParalellCause extends ZIOAppDefault {
    * Using `Cause.prettyPrint`, dump out `composed` to the console.
    */
   val run =
-    ???
+    Console.printLine(composed.prettyPrint)
 }
 
 object Sandbox extends ZIOAppDefault {
@@ -280,6 +291,7 @@ object Sandbox extends ZIOAppDefault {
    * Using `ZIO#sandbox`, sandbox the `composed` effect and print out the
    * resulting `Cause` value to the console using `Console.printLine`.
    */
-  val run =
-    ???
+  val run = {
+    composed.catchAllCause(cause => Console.printLine(cause) *> ZIO.refailCause(cause))
+  }
 }
