@@ -13,7 +13,7 @@ object SimpleLogging extends ZIOAppDefault {
   val program =
     for {
       ref   <- Ref.make(0)
-      _     <- ZIO.foreachPar(0 to 10)(i => ref.update(_ + i))
+      _     <- ZIO.foreachPar(0 to 10)(i => ZIO.log(s"Before update $i") *> ref.update(_ + i))
       value <- ref.get
     } yield value
 
