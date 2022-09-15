@@ -15,7 +15,13 @@ object ForkJoin extends ZIOAppDefault {
    * and finally, print out a message "Joined".
    */
   val run =
-    printer
+    for {
+      fiber <- printer.fork
+      _     <- Console.printLine("Forked")
+      _     <- fiber.join
+      _     <- Console.printLine("Joined")
+    } yield ()
+//    ZIO.fiberIdWith(Console.printLine(_)) *> printer
 }
 
 object ForkInterrupt extends ZIOAppDefault {
@@ -32,7 +38,12 @@ object ForkInterrupt extends ZIOAppDefault {
    * finally, print out a message "Interrupted".
    */
   val run =
-    (infinitePrinter *> ZIO.sleep(10.millis))
+    for {
+      fiber <- infinitePrinter.fork
+      _     <- ZIO.sleep(10.millis)
+      exit  <- fiber.interrupt
+      _     <- Console.printLine(exit)
+    } yield ()
 }
 
 object ParallelFib extends ZIOAppDefault {
