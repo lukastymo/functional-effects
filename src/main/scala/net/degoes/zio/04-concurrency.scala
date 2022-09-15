@@ -332,7 +332,7 @@ object FiberRefExample extends ZIOAppDefault {
       _      <- ref.get.debug("parent before fork")
       child1 <- makeChild(ref).fork
       child2 <- makeChild(ref).fork
-      _      <- ref.get.debug("parent after fork")
+      _      <- ref.get.debug("parent after fork") // if this was ref, it was 2 here (refs are global)
       _      <- child1.join
       _      <- child2.join
       _      <- ref.get.debug("parent after join")
